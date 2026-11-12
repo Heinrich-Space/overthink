@@ -40,9 +40,8 @@ It is a control layer that forces the agent to:
 
 It works with any MCP-compatible client, but it is **purpose-built for Heinrich AI**.
 
-<p align="center">
-  <img src="heinrich-logo.png" alt="Heinrich AI" width="120" />
-</p>
+<img src="heinrich-logo.png" alt="Heinrich AI" width="120" align="left" />
+<br clear="left" />
 
 ### What is Heinrich AI?
 
@@ -51,7 +50,11 @@ The Heinrich logo represents the product — a focused, no-nonsense AI coding co
 
 Overthink is the intelligence backend that powers Heinrich’s strict workflow.
 
-**Stay tuned with Heinrich AI** → [LinkedIn – Heinrich AI](https://www.linkedin.com/company/heinrich-ai)
+**Stay tuned with Heinrich AI** →  
+<a href="https://www.linkedin.com/company/heinrich-ai">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" width="22" height="22" alt="LinkedIn" style="vertical-align: middle;" />
+  &nbsp;Follow Heinrich AI on LinkedIn
+</a>
 
 ---
 
@@ -329,5 +332,8 @@ MIT © 2026 missarii
   <br/><br/>
   <strong>Overthink</strong> — Intelligent engineering discipline for AI coding agents<br/>
   Built for <a href="https://marketplace.visualstudio.com/items?itemName=heinrich-ai.heinrich-ai">Heinrich AI</a><br/>
-  <a href="https://www.linkedin.com/company/heinrich-ai">Follow Heinrich AI on LinkedIn</a>
+  <a href="https://www.linkedin.com/company/heinrich-ai">
+    <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" width="18" height="18" alt="LinkedIn" style="vertical-align: middle;" />
+    &nbsp;Follow Heinrich AI on LinkedIn
+  </a>
 </p>
