@@ -1,0 +1,9 @@
+overthink:
+  mode: adaptive
+  reasoning:
+    default_level: L1
+  execution:
+    minimal_changes: true
+    avoid_unrelated_refactoring: true
+  verification:
+    require_tests_when_applicable: true

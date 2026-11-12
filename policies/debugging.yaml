@@ -1,0 +1,10 @@
+overthink:
+  mode: adaptive
+  reasoning:
+    default_level: L2
+  investigation:
+    evidence_required: true
+    progressive_search: true
+    detect_duplicate_searches: true
+  execution:
+    one_primary_action: true
