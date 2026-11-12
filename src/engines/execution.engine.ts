@@ -2,36 +2,56 @@ import type { TaskState } from "../types/task.js";
 import { budgetController } from "../core/budget-controller.js";
 import { progressTracker } from "../core/progress-tracker.js";
 import { planningEngine } from "./planning.engine.js";
+import { guardProposedAction, disciplineBanner } from "../core/action-guard.js";
 
 export class ExecutionEngine {
-  /**
-   * Determine the single best next action.
-   * Prefers one primary action over long lists of possibilities.
-   */
   nextAction(task: TaskState): {
     action: string;
     why: string;
     evidence_required: string;
     avoid: string[];
     stop_condition?: string;
+    discipline: string;
+    hard_rules: string[];
   } {
+    const avoid = [
+      "sleep / wait loops",
+      "Installing packages before diagnosing",
+      "Rewriting unrelated modules",
+      "Scraping the whole page with new Python deps",
+      "Repeating the same curl/search",
+      "Creating helper scripts unless strictly necessary",
+    ];
+
+    const hard_rules = [
+      "Do exactly ONE primary action next",
+      "Do not narrate long reasoning — act or ask",
+      "If Overthink blocks an action, obey the alternative",
+      "Max 3 failed attempts then report to user",
+    ];
+
     if (!budgetController.canTakeAction(task)) {
       return {
-        action: "Stop and report current state",
+        action: "STOP. Report current evidence and blockers to the user.",
         why: "Action budget exhausted",
         evidence_required: "None",
-        avoid: ["Further tool calls without user input"],
+        avoid,
         stop_condition: "Budget exceeded",
+        discipline: disciplineBanner(),
+        hard_rules,
       };
     }
 
-    if (budgetController.isStagnating(task)) {
+    if (budgetController.isStagnating(task, 2)) {
       return {
-        action: "Change investigation or fix strategy",
-        why: "Repeated actions produced no new progress",
-        evidence_required: "A new hypothesis or different file/scope",
-        avoid: task.actions.slice(-3).map((a) => a.action),
-        stop_condition: "If next attempt also yields no progress, document blockers",
+        action:
+          "STOP thrashing. Change hypothesis OR ask the user one clarifying question.",
+        why: "Two or more actions produced no progress",
+        evidence_required: "A different file, URL, or error line — not the same search",
+        avoid: [...avoid, ...task.actions.slice(-3).map((a) => a.action)],
+        stop_condition: "If still no progress after one different action, finish with blockers",
+        discipline: disciplineBanner(),
+        hard_rules,
       };
     }
 
@@ -39,32 +59,50 @@ export class ExecutionEngine {
       const pending = task.verification_checks.filter((c) => !c.executed);
       if (pending.length > 0) {
         return {
-          action: `Execute verification: ${pending[0].name}`,
-          why: "Verification required before claiming completion",
-          evidence_required: "Actual test/build output",
-          avoid: ["Claiming success without running the check"],
+          action: `Run verification only: ${pending[0].name}`,
+          why: "Verification required before claiming done",
+          evidence_required: "Actual command output",
+          avoid: [...avoid, "Claiming success without running the check"],
+          discipline: disciplineBanner(),
+          hard_rules,
         };
       }
     }
 
+    // Domain-specific shortcuts for common user complaints
+    const t = task.task.toLowerCase();
+    if (/image|img|not show|broken image|src=/.test(t) && task.evidence.length === 0) {
+      return {
+        action:
+          "Identify the exact page URL/port the user opens, then list only FAILED image requests (Network → Img) or broken src attributes — do not write scrapers",
+        why: "Image bugs are path/404/CSS problems, not architecture problems",
+        evidence_required: "One failing src URL or local path",
+        avoid,
+        discipline: disciplineBanner(),
+        hard_rules,
+      };
+    }
+
     if (task.suspected_root_cause && task.confidence >= 0.8) {
       return {
-        action: "Implement the minimal fix for the confirmed root cause",
+        action: "Apply the smallest fix for the confirmed root cause only",
         why: "Root cause has sufficient confidence",
-        evidence_required: "Diff of the change and targeted test result",
-        avoid: [
-          "Refactoring unrelated code",
-          "Adding abstractions without clear benefit",
-        ],
+        evidence_required: "Diff + one verification",
+        avoid: [...avoid, "Drive-by refactors"],
+        discipline: disciplineBanner(),
+        hard_rules,
       };
     }
 
     if (task.evidence.length === 0 || task.relevant_files.length === 0) {
       return {
-        action: "Investigate: locate relevant files and collect evidence",
-        why: "Insufficient evidence to diagnose safely",
-        evidence_required: "File paths, error messages, stack traces, or config values",
-        avoid: ["Searching the entire repository repeatedly"],
+        action:
+          "Collect minimal evidence: open the failing route/file OR capture the exact error string",
+        why: "Not enough evidence to change code safely",
+        evidence_required: "File path, error line, or failing URL",
+        avoid,
+        discipline: disciplineBanner(),
+        hard_rules,
       };
     }
 
@@ -73,27 +111,39 @@ export class ExecutionEngine {
       return {
         action: fromPlan,
         why: "Next step in the current plan",
-        evidence_required: "Outcome of the step",
-        avoid: ["Skipping verification", "Broad unrelated changes"],
+        evidence_required: "Outcome of that step only",
+        avoid,
+        discipline: disciplineBanner(),
+        hard_rules,
       };
     }
 
     return {
-      action: "Diagnose root cause from collected evidence",
-      why: "Evidence exists but root cause not yet confirmed",
-      evidence_required: "Hypothesis ranked by evidence strength",
-      avoid: ["Treating untested hypotheses as facts"],
+      action: "Form one ranked hypothesis and the cheapest test that would falsify it",
+      why: "Evidence exists but root cause not confirmed",
+      evidence_required: "Test result that supports or kills the hypothesis",
+      avoid: [...avoid, "Treating guesses as facts"],
+      discipline: disciplineBanner(),
+      hard_rules,
     };
+  }
+
+  evaluateAction(task: TaskState, proposed: string) {
+    return guardProposedAction(proposed, {
+      task: task.task,
+      stagnation_count: task.stagnation_count,
+    });
   }
 
   policies(): string[] {
     return [
-      "Work on one logical problem at a time",
-      "Prefer minimal code changes",
-      "Do not repeat an unsuccessful action without changing the hypothesis",
-      "Preserve existing architecture unless the task requires changing it",
-      "Run targeted tests before broad test suites",
-      "Avoid unrelated improvements",
+      "One logical problem at a time",
+      "Minimal code changes only",
+      "Never repeat an unsuccessful action without a new hypothesis",
+      "No package installs as a first response to UI bugs",
+      "No sleep as a debugging strategy",
+      "Preserve architecture unless the task requires changing it",
+      "Targeted verification before broad suites",
     ];
   }
 }

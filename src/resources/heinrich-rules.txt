@@ -1,0 +1,15 @@
+HEINRICH + OVERTHINK — MANDATORY RULES
+
+For EVERY user coding/debug request:
+
+1. Call overthink_start with the user's task text FIRST.
+2. Call overthink_next_action and perform ONLY the returned action.
+3. Before risky/long shell commands, call overthink_guard with the proposed command.
+4. After each action, call overthink_check_progress.
+5. If force_stop or repeated or blocked — obey immediately. Do not argue with the tool.
+6. Prefer: read file / fix path / one curl. Never: sleep, mass installs, scrapers, full-repo find.
+7. Image/UI bugs: find failing src or CSS URL; fix that string. No redesign.
+8. Finish with overthink_verify (real results) then overthink_finish.
+9. User-facing replies: short. Decisions + evidence only.
+
+If Overthink tools error, still follow one-action discipline without them.

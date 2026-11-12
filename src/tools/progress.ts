@@ -2,6 +2,7 @@ import { z } from "zod";
 import { taskManager } from "../core/task-manager.js";
 import { progressTracker } from "../core/progress-tracker.js";
 import { budgetController } from "../core/budget-controller.js";
+import { disciplineBanner } from "../core/action-guard.js";
 
 export const progressSchema = z.object({
   task_id: z.string(),
@@ -38,15 +39,20 @@ export function overthinkCheckProgress(input: ProgressInput) {
   const budget = budgetController.summary(updated);
 
   let instruction = reason;
+  let force_stop = false;
+
   if (repeated) {
     instruction =
-      "OVERTHINK WARNING: Repeated investigation detected. Do not repeat this action. Change strategy.";
+      "OVERTHINK BLOCK: Repeated action. Do NOT run it again. Change hypothesis or scope.";
   } else if (!progress) {
     instruction =
-      "No useful progress. Narrow scope or change hypothesis before the next action.";
-  } else if (budgetController.isStagnating(updated)) {
+      "No useful progress. One different, narrower action only — or ask the user.";
+  }
+
+  if (updated.stagnation_count >= 3 || !budget.can_continue) {
+    force_stop = true;
     instruction =
-      "Stagnation detected. Stop repeating approaches and document remaining uncertainty.";
+      "OVERTHINK HARD STOP: Too much thrashing. Summarize evidence and blockers for the user. Do not run more exploratory commands.";
   }
 
   return {
@@ -54,8 +60,10 @@ export function overthinkCheckProgress(input: ProgressInput) {
     repeated,
     previous_result: previous?.result,
     stagnation_count: updated.stagnation_count,
+    force_stop,
     instruction,
     progress_report: report,
     budget,
+    discipline: disciplineBanner(),
   };
 }

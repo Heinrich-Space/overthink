@@ -1,5 +1,5 @@
 overthink:
-  mode: adaptive
+  mode: strict
 
   reasoning:
     default_level: L1
@@ -10,6 +10,7 @@ overthink:
     minimal_changes: true
     avoid_unrelated_refactoring: true
     one_primary_action: true
+    block_waste_patterns: true
 
   investigation:
     evidence_required: true
@@ -19,24 +20,24 @@ overthink:
   budgets:
     simple:
       max_retries: 1
-      max_actions: 5
+      max_actions: 4
       planning_seconds: 5
       investigation_seconds: 10
     normal:
       max_retries: 2
-      max_actions: 12
-      planning_seconds: 15
-      investigation_seconds: 30
+      max_actions: 8
+      planning_seconds: 10
+      investigation_seconds: 20
     complex:
       max_retries: 3
-      max_actions: 30
+      max_actions: 15
+      planning_seconds: 30
+      investigation_seconds: 60
+    critical:
+      max_retries: 4
+      max_actions: 25
       planning_seconds: 45
       investigation_seconds: 90
-    critical:
-      max_retries: 5
-      max_actions: 50
-      planning_seconds: 60
-      investigation_seconds: 180
 
   verification:
     require_tests_when_applicable: true
@@ -46,3 +47,4 @@ overthink:
     concise: true
     no_reasoning_narration: true
     report_unverified_results: true
+    max_user_facing_lines: 8
