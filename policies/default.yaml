@@ -11,11 +11,14 @@ overthink:
     avoid_unrelated_refactoring: true
     one_primary_action: true
     block_waste_patterns: true
+    kill_fail_loops: true
+    finish_bias_under_time_pressure: true
 
   investigation:
     evidence_required: true
     detect_duplicate_searches: true
     progressive_search: true
+    fast_triage: true
 
   budgets:
     simple:
@@ -25,19 +28,19 @@ overthink:
       investigation_seconds: 10
     normal:
       max_retries: 2
-      max_actions: 8
-      planning_seconds: 10
-      investigation_seconds: 20
+      max_actions: 6
+      planning_seconds: 8
+      investigation_seconds: 15
     complex:
       max_retries: 3
-      max_actions: 15
+      max_actions: 12
+      planning_seconds: 20
+      investigation_seconds: 40
+    critical:
+      max_retries: 3
+      max_actions: 18
       planning_seconds: 30
       investigation_seconds: 60
-    critical:
-      max_retries: 4
-      max_actions: 25
-      planning_seconds: 45
-      investigation_seconds: 90
 
   verification:
     require_tests_when_applicable: true
@@ -47,4 +50,4 @@ overthink:
     concise: true
     no_reasoning_narration: true
     report_unverified_results: true
-    max_user_facing_lines: 8
+    max_user_facing_lines: 6

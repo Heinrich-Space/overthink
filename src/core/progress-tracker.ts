@@ -1,17 +1,29 @@
 import type { TaskState, ActionRecord } from "../types/task.js";
+import { normalizeActionKey } from "./action-guard.js";
 
 export class ProgressTracker {
   detectRepetition(
     task: TaskState,
     action: string
-  ): { repeated: boolean; previous?: ActionRecord } {
-    const normalized = action.toLowerCase().trim();
-    const previous = [...task.actions]
+  ): { repeated: boolean; similar: boolean; previous?: ActionRecord } {
+    const exact = action.toLowerCase().trim();
+    const key = normalizeActionKey(action);
+
+    const previousExact = [...task.actions]
       .reverse()
-      .find((a) => a.action.toLowerCase().trim() === normalized);
+      .find((a) => a.action.toLowerCase().trim() === exact);
+
+    const previousSimilar = [...task.actions]
+      .reverse()
+      .find((a) => {
+        const k = normalizeActionKey(a.action);
+        return k === key || (k.length > 15 && (key.includes(k.slice(0, 30)) || k.includes(key.slice(0, 30))));
+      });
+
     return {
-      repeated: !!previous,
-      previous,
+      repeated: !!previousExact,
+      similar: !previousExact && !!previousSimilar,
+      previous: previousExact ?? previousSimilar,
     };
   }
 
@@ -29,6 +41,12 @@ export class ProgressTracker {
       "nothing found",
       "no change",
       "unchanged",
+      "still failing",
+      "same error",
+      "exit code: 1",
+      "command not found",
+      "module not found",
+      "timed out",
     ];
     const progressSignals = [
       "found",
@@ -40,19 +58,28 @@ export class ProgressTracker {
       "resolved",
       "new evidence",
       "root cause",
+      "200",
+      "success",
+      "diff",
     ];
 
     if (noProgressSignals.some((s) => lower.includes(s))) {
-      return { progress: false, reason: "No new evidence produced" };
+      return { progress: false, reason: "No new useful evidence" };
     }
     if (progressSignals.some((s) => lower.includes(s))) {
-      return { progress: true, reason: "New evidence or progress detected" };
+      return { progress: true, reason: "Forward signal in result" };
     }
-    // Default: assume progress if result is non-empty and different
     return {
-      progress: result.trim().length > 10,
-      reason: "Result recorded",
+      progress: result.trim().length > 20,
+      reason: "Result recorded — treat as weak progress only",
     };
+  }
+
+  /** Fail-loop: last N actions all non-progress */
+  isFailLoop(task: TaskState, window = 3): boolean {
+    const last = task.actions.slice(-window);
+    if (last.length < window) return false;
+    return last.every((a) => !a.progress);
   }
 
   getProgressReport(task: TaskState) {
@@ -68,6 +95,7 @@ export class ProgressTracker {
       regression_verified: task.verification_status === "verified",
       stagnation_count: task.stagnation_count,
       total_actions: task.actions.length,
+      fail_loop: this.isFailLoop(task),
     };
   }
 }

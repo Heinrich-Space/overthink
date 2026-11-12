@@ -18,14 +18,28 @@ export class BudgetController {
     return Math.max(0, task.budget.max_actions - task.actions.length);
   }
 
+  /** Urgency for decision engine / UI */
+  urgency(task: TaskState): "low" | "medium" | "high" | "critical" {
+    const left = this.remainingActions(task);
+    if (left <= 1 || task.stagnation_count >= 3) return "critical";
+    if (left <= 3 || task.stagnation_count >= 2) return "high";
+    if (left <= 5) return "medium";
+    return "low";
+  }
+
   summary(task: TaskState) {
+    const failRetries = task.actions.filter((a) => !a.progress).length;
     return {
       actions_used: task.actions.length,
       actions_remaining: this.remainingActions(task),
-      retries_used: task.actions.filter((a) => !a.progress).length,
+      retries_used: failRetries,
       max_retries: task.budget.max_retries,
       stagnation_count: task.stagnation_count,
-      can_continue: this.canTakeAction(task) && this.canRetry(task),
+      urgency: this.urgency(task),
+      can_continue:
+        this.canTakeAction(task) &&
+        failRetries < task.budget.max_retries &&
+        task.stagnation_count < 3,
     };
   }
 }

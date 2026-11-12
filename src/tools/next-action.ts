@@ -27,7 +27,16 @@ export function overthinkNextAction(input: NextActionInput) {
     evidence_required: next.evidence_required,
     avoid: next.avoid,
     stop_condition: next.stop_condition,
+    time_efficiency: next.time_efficiency,
+    triage: next.triage,
+    decision: next.decision,
+    discipline: next.discipline,
+    hard_rules: next.hard_rules,
     budget,
     execution_policies: executionEngine.policies(),
+    instruction:
+      budget.urgency === "critical" || budget.urgency === "high"
+        ? "Time pressure HIGH — execute primary_action only, then check progress or finish."
+        : "Execute primary_action only, then overthink_check_progress.",
   };
 }

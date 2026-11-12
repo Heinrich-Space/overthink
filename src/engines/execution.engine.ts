@@ -2,7 +2,13 @@ import type { TaskState } from "../types/task.js";
 import { budgetController } from "../core/budget-controller.js";
 import { progressTracker } from "../core/progress-tracker.js";
 import { planningEngine } from "./planning.engine.js";
-import { guardProposedAction, disciplineBanner } from "../core/action-guard.js";
+import {
+  guardProposedAction,
+  disciplineBanner,
+  normalizeActionKey,
+} from "../core/action-guard.js";
+import { fastTriage } from "../core/fast-triage.js";
+import { decideNext } from "../core/decision-engine.js";
 
 export class ExecutionEngine {
   nextAction(task: TaskState): {
@@ -13,45 +19,60 @@ export class ExecutionEngine {
     stop_condition?: string;
     discipline: string;
     hard_rules: string[];
+    triage?: ReturnType<typeof fastTriage>;
+    decision?: ReturnType<typeof decideNext>;
+    time_efficiency: string;
   } {
+    const triage = fastTriage(task.task);
+    const decision = decideNext(task, triage);
+
     const avoid = [
+      ...triage.out_of_scope,
       "sleep / wait loops",
-      "Installing packages before diagnosing",
-      "Rewriting unrelated modules",
-      "Scraping the whole page with new Python deps",
-      "Repeating the same curl/search",
-      "Creating helper scripts unless strictly necessary",
+      "installs before diagnosis",
+      "scrapers for simple checks",
+      "repeating the same command family",
+      "full test suite before localization",
+      "unrelated module rewrites",
     ];
 
     const hard_rules = [
-      "Do exactly ONE primary action next",
-      "Do not narrate long reasoning — act or ask",
-      "If Overthink blocks an action, obey the alternative",
-      "Max 3 failed attempts then report to user",
+      "ONE primary action only",
+      "If similar action already failed → change angle immediately",
+      "Prefer finish over more search when urgency is high/critical",
+      "Obey overthink_guard BLOCK without argument",
     ];
 
-    if (!budgetController.canTakeAction(task)) {
+    const time_efficiency = `class=${triage.failure_class} time_box~${triage.time_box_minutes}m rule="${triage.decision_rule}" urgency=${budgetController.urgency(task)}`;
+
+    if (!budgetController.canTakeAction(task) || progressTracker.isFailLoop(task)) {
       return {
-        action: "STOP. Report current evidence and blockers to the user.",
-        why: "Action budget exhausted",
-        evidence_required: "None",
+        action: decision.choice,
+        why: decision.why,
+        evidence_required: "Summary for user only",
         avoid,
-        stop_condition: "Budget exceeded",
+        stop_condition: "Fail-loop or budget empty",
         discipline: disciplineBanner(),
         hard_rules,
+        triage,
+        decision,
+        time_efficiency,
       };
     }
 
     if (budgetController.isStagnating(task, 2)) {
       return {
         action:
-          "STOP thrashing. Change hypothesis OR ask the user one clarifying question.",
-        why: "Two or more actions produced no progress",
-        evidence_required: "A different file, URL, or error line — not the same search",
+          "STOP thrashing. Different hypothesis OR one clarifying question to the user.",
+        why: "Stagnation — more of the same has negative expected value",
+        evidence_required: "New angle only",
         avoid: [...avoid, ...task.actions.slice(-3).map((a) => a.action)],
-        stop_condition: "If still no progress after one different action, finish with blockers",
+        stop_condition: "One different action max, then finish with blockers",
         discipline: disciplineBanner(),
         hard_rules,
+        triage,
+        decision,
+        time_efficiency,
       };
     }
 
@@ -59,91 +80,54 @@ export class ExecutionEngine {
       const pending = task.verification_checks.filter((c) => !c.executed);
       if (pending.length > 0) {
         return {
-          action: `Run verification only: ${pending[0].name}`,
-          why: "Verification required before claiming done",
-          evidence_required: "Actual command output",
-          avoid: [...avoid, "Claiming success without running the check"],
+          action: `Run only: ${pending[0].name}`,
+          why: "Verification is the path to finish",
+          evidence_required: "Real command output",
+          avoid: [...avoid, "claiming done without running it"],
           discipline: disciplineBanner(),
           hard_rules,
+          triage,
+          decision,
+          time_efficiency,
         };
       }
     }
 
-    // Domain-specific shortcuts for common user complaints
-    const t = task.task.toLowerCase();
-    if (/image|img|not show|broken image|src=/.test(t) && task.evidence.length === 0) {
-      return {
-        action:
-          "Identify the exact page URL/port the user opens, then list only FAILED image requests (Network → Img) or broken src attributes — do not write scrapers",
-        why: "Image bugs are path/404/CSS problems, not architecture problems",
-        evidence_required: "One failing src URL or local path",
-        avoid,
-        discipline: disciplineBanner(),
-        hard_rules,
-      };
-    }
-
-    if (task.suspected_root_cause && task.confidence >= 0.8) {
-      return {
-        action: "Apply the smallest fix for the confirmed root cause only",
-        why: "Root cause has sufficient confidence",
-        evidence_required: "Diff + one verification",
-        avoid: [...avoid, "Drive-by refactors"],
-        discipline: disciplineBanner(),
-        hard_rules,
-      };
-    }
-
-    if (task.evidence.length === 0 || task.relevant_files.length === 0) {
-      return {
-        action:
-          "Collect minimal evidence: open the failing route/file OR capture the exact error string",
-        why: "Not enough evidence to change code safely",
-        evidence_required: "File path, error line, or failing URL",
-        avoid,
-        discipline: disciplineBanner(),
-        hard_rules,
-      };
-    }
-
-    const fromPlan = planningEngine.nextStepFromPlan(task);
-    if (fromPlan) {
-      return {
-        action: fromPlan,
-        why: "Next step in the current plan",
-        evidence_required: "Outcome of that step only",
-        avoid,
-        discipline: disciplineBanner(),
-        hard_rules,
-      };
-    }
-
+    // Prefer decision engine output (triage-aware)
     return {
-      action: "Form one ranked hypothesis and the cheapest test that would falsify it",
-      why: "Evidence exists but root cause not confirmed",
-      evidence_required: "Test result that supports or kills the hypothesis",
-      avoid: [...avoid, "Treating guesses as facts"],
+      action: decision.choice,
+      why: decision.why,
+      evidence_required:
+        task.evidence.length === 0
+          ? "One artifact (error, path, failing URL)"
+          : "Outcome that confirms or kills top hypothesis",
+      avoid,
       discipline: disciplineBanner(),
       hard_rules,
+      triage,
+      decision,
+      time_efficiency,
     };
   }
 
   evaluateAction(task: TaskState, proposed: string) {
+    const recent_keys = task.actions.slice(-5).map((a) => normalizeActionKey(a.action));
     return guardProposedAction(proposed, {
       task: task.task,
       stagnation_count: task.stagnation_count,
+      recent_keys,
     });
   }
 
   policies(): string[] {
     return [
+      "Fast triage before exploration",
       "One logical problem at a time",
+      "Kill fail-loops early (similar actions count)",
+      "Time-box by failure class",
       "Minimal code changes only",
-      "Never repeat an unsuccessful action without a new hypothesis",
-      "No package installs as a first response to UI bugs",
-      "No sleep as a debugging strategy",
-      "Preserve architecture unless the task requires changing it",
-      "Targeted verification before broad suites",
+      "Finish bias under high urgency",
+      "No side-paths unless the task requests them",
     ];
   }
 }

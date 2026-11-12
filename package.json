@@ -1,7 +1,7 @@
 {
   "name": "overthink",
-  "version": "0.2.0",
-  "description": "Overthink — Strict MCP discipline layer for AI coding agents. Blocks overthinking, wasteful commands, and unverified success claims.",
+  "version": "0.3.0",
+  "description": "Overthink — Strict MCP discipline: fast triage, anti-loop, time pressure, no side-paths",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -22,9 +22,8 @@
     "model-context-protocol",
     "ai",
     "coding-agent",
-    "problem-solving",
     "anti-overthinking",
-    "engineering"
+    "time-efficiency"
   ],
   "author": "missarii",
   "license": "MIT",

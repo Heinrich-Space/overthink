@@ -1,6 +1,5 @@
 /**
- * Action Guard — blocks classic overthinking / wasteful agent patterns
- * before the model burns tokens on irrelevant work.
+ * Action Guard — blocks waste, side-paths, and loop fuel.
  */
 
 export type GuardVerdict = {
@@ -17,46 +16,72 @@ const WASTE_PATTERNS: Array<{
 }> = [
   {
     pattern: /\bsleep\s+\d+/i,
-    reason: "Sleeping does not gather evidence or fix code",
-    alternative: "Run one targeted check (curl, open file, read error log)",
+    reason: "Sleep burns clock with zero evidence",
+    alternative: "One targeted check now",
   },
   {
     pattern: /pip\s+install|npm\s+install\s+(?!.*overthink)|apt\s+install|brew\s+install/i,
-    reason: "Installing packages is rarely the first step for a UI/bug fix",
-    alternative: "Inspect the failing asset, URL, or error with existing tools first",
+    reason: "Installs before diagnosis are a side-path",
+    alternative: "Inspect failing file/URL/error with existing tools",
   },
   {
     pattern: /beautifulsoup|bs4|selenium|playwright\s+install/i,
-    reason: "Heavy scraping stack for a simple page check",
-    alternative: "Use curl or a single browser Network panel check",
+    reason: "Heavy stack for a simple check",
+    alternative: "curl, Network panel, or open the source file",
   },
   {
     pattern: /while\s+true|for\s+i\s+in\s+\{\d+\.\.\d{3,}/i,
-    reason: "Long loops look like thrashing, not investigation",
-    alternative: "One command, one hypothesis, inspect output",
+    reason: "Long loops = thrashing",
+    alternative: "One command, inspect output, decide",
   },
   {
-    pattern: /find\s+\/\s+-name|find\s+\.\s+-type\s+f(?!.*-maxdepth)/i,
-    reason: "Unbounded filesystem search",
-    alternative: "Search only the project subdirectory that owns the feature",
+    pattern: /find\s+\/\s+-name|find\s+\.\s+-type\s+f(?!.*-maxdepth\s+[123])/i,
+    reason: "Unbounded search wastes time",
+    alternative: "Search only the feature folder (maxdepth 2–3)",
   },
   {
-    pattern: /cat\s+.*\|\s*head|curl.*\|\s*head\s+-5/i,
-    reason: "Weak signal; often repeated without a hypothesis",
-    alternative: "State what you expect to find, then run one precise command",
+    pattern: /git\s+log\s+--all|git\s+bisect/i,
+    reason: "History dig before current failure is localized",
+    alternative: "Reproduce the failure in current tree first",
+  },
+  {
+    pattern: /docker\s+(build|compose)|kubectl|terraform/i,
+    reason: "Infra side-path unless the task is infra",
+    alternative: "Stay on the application layer until proven otherwise",
+  },
+  {
+    pattern: /npm\s+run\s+test\s*$|pytest\s*$|go\s+test\s+\.\.\./i,
+    reason: "Full suite too early slows finish",
+    alternative: "Run the single test or check that covers the change",
   },
 ];
 
-const IRRELEVANT_WHEN_IMAGE_BUG = [
+const SIDE_PATH_WHEN_UI = [
   /refactor/i,
   /rewrite\s+(the\s+)?(app|site|component)/i,
   /redesign/i,
   /migrate\s+to/i,
+  /clean\s+up\s+the\s+whole/i,
 ];
+
+export function normalizeActionKey(action: string): string {
+  return action
+    .toLowerCase()
+    .replace(/https?:\/\/[^\s]+/g, "URL")
+    .replace(/\d+/g, "N")
+    .replace(/['"`].*?['"`]/g, "STR")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
 
 export function guardProposedAction(
   action: string,
-  context?: { task?: string; stagnation_count?: number }
+  context?: {
+    task?: string;
+    stagnation_count?: number;
+    recent_keys?: string[];
+  }
 ): GuardVerdict {
   const text = action.trim();
   if (!text) {
@@ -64,7 +89,7 @@ export function guardProposedAction(
       allowed: false,
       severity: "block",
       reason: "Empty action",
-      alternative: "Propose one concrete next step",
+      alternative: "One concrete next step",
     };
   }
 
@@ -79,16 +104,29 @@ export function guardProposedAction(
     }
   }
 
+  const key = normalizeActionKey(text);
+  const recent = context?.recent_keys ?? [];
+  const similarCount = recent.filter(
+    (k) => k === key || (k.length > 20 && key.includes(k.slice(0, 40)))
+  ).length;
+  if (similarCount >= 1) {
+    return {
+      allowed: false,
+      severity: "block",
+      reason: "Near-duplicate of a recent action — loop risk",
+      alternative: "Different file, different URL, or different hypothesis",
+    };
+  }
+
   const task = context?.task ?? "";
-  if (/image|img|src|not\s+show|broken\s+image|404/i.test(task)) {
-    for (const p of IRRELEVANT_WHEN_IMAGE_BUG) {
+  if (/image|img|src|not\s+show|broken\s+image|404|css|style|button|ui/i.test(task)) {
+    for (const p of SIDE_PATH_WHEN_UI) {
       if (p.test(text)) {
         return {
           allowed: false,
           severity: "block",
-          reason: "Task is about missing images; refactor/redesign is out of scope",
-          alternative:
-            "Find broken img src or CSS background URLs, fix paths only",
+          reason: "UI/asset task — redesign/refactor is a side-path",
+          alternative: "Fix the failing path, selector, or prop only",
         };
       }
     }
@@ -98,7 +136,7 @@ export function guardProposedAction(
     return {
       allowed: true,
       severity: "warn",
-      reason: "Stagnation high — this action must change hypothesis or scope",
+      reason: "Stagnation high — this must change hypothesis or scope",
       alternative: "Narrow to one file or one failing URL",
     };
   }
@@ -106,16 +144,17 @@ export function guardProposedAction(
   return {
     allowed: true,
     severity: "ok",
-    reason: "Action looks proportionate",
+    reason: "Action looks on-path",
   };
 }
 
 export function disciplineBanner(): string {
   return [
-    "OVERTHINK DISCIPLINE",
-    "- One hypothesis. One action. Then check progress.",
-    "- No sleep, no package installs, no broad repo scans as first moves.",
-    "- Prefer: open file → fix path → verify. Not: rewrite architecture.",
-    "- If two actions produce no new evidence, STOP and report blockers.",
+    "OVERTHINK v0.3 — TIME + LOOP DISCIPLINE",
+    "- Triage in ≤1 action. Localize in ≤2. Fix small. Verify once.",
+    "- Same family of command twice = STOP and change angle.",
+    "- No sleep, no installs, no whole-repo find, no full test suite first.",
+    "- Side-paths (refactor/redesign/migrate) only if the task asks for them.",
+    "- Prefer finish over exploration theater.",
   ].join("\n");
 }

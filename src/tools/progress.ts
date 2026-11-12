@@ -16,7 +16,7 @@ export function overthinkCheckProgress(input: ProgressInput) {
   const task = taskManager.get(input.task_id);
   if (!task) throw new Error(`Task not found: ${input.task_id}`);
 
-  const { repeated, previous } = progressTracker.detectRepetition(
+  const { repeated, similar, previous } = progressTracker.detectRepetition(
     task,
     input.action
   );
@@ -30,40 +30,49 @@ export function overthinkCheckProgress(input: ProgressInput) {
     action: input.action,
     result: input.result,
     progress,
-    repeated,
+    repeated: repeated || similar,
     timestamp: new Date().toISOString(),
   });
 
   const updated = taskManager.get(input.task_id)!;
   const report = progressTracker.getProgressReport(updated);
   const budget = budgetController.summary(updated);
+  const fail_loop = progressTracker.isFailLoop(updated);
 
   let instruction = reason;
   let force_stop = false;
 
-  if (repeated) {
+  if (repeated || similar) {
     instruction =
-      "OVERTHINK BLOCK: Repeated action. Do NOT run it again. Change hypothesis or scope.";
+      "OVERTHINK BLOCK: Repeated/similar action. Do NOT run the same family again. Change hypothesis, file, or URL.";
   } else if (!progress) {
     instruction =
-      "No useful progress. One different, narrower action only — or ask the user.";
+      "No useful progress. One different narrower action — or ask the user. Do not expand scope.";
   }
 
-  if (updated.stagnation_count >= 3 || !budget.can_continue) {
+  if (fail_loop || updated.stagnation_count >= 3 || !budget.can_continue) {
     force_stop = true;
     instruction =
-      "OVERTHINK HARD STOP: Too much thrashing. Summarize evidence and blockers for the user. Do not run more exploratory commands.";
+      "OVERTHINK HARD STOP: Fail-loop or budget exhausted. Summarize evidence + blockers. No more exploratory commands.";
   }
 
   return {
     progress,
     repeated,
+    similar,
     previous_result: previous?.result,
     stagnation_count: updated.stagnation_count,
+    fail_loop,
     force_stop,
     instruction,
     progress_report: report,
     budget,
     discipline: disciplineBanner(),
+    next:
+      force_stop
+        ? "overthink_finish"
+        : progress
+          ? "overthink_next_action"
+          : "overthink_next_action (MUST be a different angle)",
   };
 }

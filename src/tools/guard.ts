@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { taskManager } from "../core/task-manager.js";
 import { executionEngine } from "../engines/execution.engine.js";
-import { guardProposedAction, disciplineBanner } from "../core/action-guard.js";
+import {
+  guardProposedAction,
+  disciplineBanner,
+  normalizeActionKey,
+} from "../core/action-guard.js";
 
 export const guardSchema = z.object({
   task_id: z.string().optional(),
@@ -23,13 +27,15 @@ export function overthinkGuard(input: GuardInput) {
     ? executionEngine.evaluateAction(task, input.proposed_action)
     : guardProposedAction(input.proposed_action, {
         task: input.task_hint,
+        recent_keys: [],
       });
 
   return {
     ...verdict,
+    action_key: normalizeActionKey(input.proposed_action),
     discipline: disciplineBanner(),
     instruction: verdict.allowed
-      ? "Proceed with this single action, then call overthink_check_progress."
-      : `BLOCKED. Do not run that action. ${verdict.alternative ?? "Choose a smaller diagnostic step."}`,
+      ? "Proceed with this single action, then overthink_check_progress."
+      : `BLOCKED. Do not run it. ${verdict.alternative ?? "Pick a smaller on-path step."}`,
   };
 }
