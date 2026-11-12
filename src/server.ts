@@ -1,6 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import express from "express";
+import cors from "cors";
+import { randomUUID } from "node:crypto";
 
 import { overthinkStart, startSchema } from "./tools/start.js";
 import { overthinkInvestigate, investigateSchema } from "./tools/investigate.js";
@@ -34,10 +38,9 @@ Do not spend more effort thinking about a problem than the problem requires.
 export function createServer() {
   const server = new McpServer({
     name: "overthink",
-    version: "0.1.0",
+    version: "0.1.1",
   });
 
-  // Resources
   server.resource(
     "overthink://rules/core",
     "overthink://rules/core",
@@ -77,7 +80,6 @@ Never present a hypothesis as a confirmed root cause.
     })
   );
 
-  // Tools
   server.tool(
     "overthink_start",
     "Initialize a task, classify complexity, select reasoning level and budgets",
@@ -174,7 +176,6 @@ Never present a hypothesis as a confirmed root cause.
     }
   );
 
-  // Prompts
   server.prompt(
     "solve_task",
     "Solve an engineering task under Overthink discipline",
@@ -212,9 +213,88 @@ Never present a hypothesis as a confirmed root cause.
   return server;
 }
 
+/** Local stdio mode (Cursor, Claude Code, etc.) */
 export async function startServer() {
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Overthink MCP server running on stdio");
+}
+
+/**
+ * HTTP / Streamable HTTP mode for Heinrich and other remote MCP clients.
+ * Listen only on localhost by default.
+ */
+export async function startHttpServer(port = 3921) {
+  const app = express();
+  app.use(cors({
+    origin: true,
+    exposedHeaders: ["Mcp-Session-Id"],
+  }));
+  app.use(express.json({ limit: "4mb" }));
+
+  // One transport per session (stateful Streamable HTTP)
+  const sessions = new Map<
+    string,
+    { server: McpServer; transport: StreamableHTTPServerTransport }
+  >();
+
+  app.get("/health", (_req, res) => {
+    res.json({ ok: true, name: "overthink", version: "0.1.1" });
+  });
+
+  app.all("/mcp", async (req, res) => {
+    try {
+      const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+      if (sessionId && sessions.has(sessionId)) {
+        const { transport } = sessions.get(sessionId)!;
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
+
+      // New session (initialize)
+      if (req.method === "POST") {
+        const server = createServer();
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (id) => {
+            sessions.set(id, { server, transport });
+          },
+        });
+
+        transport.onclose = () => {
+          const id = transport.sessionId;
+          if (id) sessions.delete(id);
+        };
+
+        await server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
+
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Bad Request: No valid session" },
+        id: null,
+      });
+    } catch (err) {
+      console.error("MCP HTTP error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal server error" },
+          id: null,
+        });
+      }
+    }
+  });
+
+  await new Promise<void>((resolve) => {
+    app.listen(port, "127.0.0.1", () => {
+      console.error(`Overthink MCP HTTP server listening on http://127.0.0.1:${port}/mcp`);
+      console.error(`Health check: http://127.0.0.1:${port}/health`);
+      resolve();
+    });
+  });
 }

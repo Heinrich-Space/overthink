@@ -1,6 +1,6 @@
 {
   "name": "overthink",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Overthink — An MCP Server for Intelligent AI Problem Solving. Intelligent problem-solving control layer that transforms AI coding agents into disciplined engineering problem solvers.",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +10,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/index.ts --http --port 3921",
     "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http --port 3921",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
@@ -32,6 +34,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
     "zod": "^3.24.2",
     "yaml": "^2.7.0",
     "pino": "^9.6.0",
@@ -40,6 +44,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/express": "^5.0.0",
+    "@types/cors": "^2.8.17",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
