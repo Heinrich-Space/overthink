@@ -42,9 +42,6 @@ It is a **model-independent intelligence & execution discipline layer** that sit
 
 It works with Claude, GPT, Qwen, Gemini, Mistral, local models, FreeLLMAPI, and any MCP-compatible client (Cursor, Windsurf, Claude Code, VS Code via Heinrich AI, etc.).
 
-<p align="center">
-  <img src="src/overthink-logo.png" alt="Overthink" width="80" />
-</p>
 
 ## Core principles
 
