@@ -5,6 +5,9 @@ import { z } from "zod";
 import express from "express";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 import { overthinkStart } from "./tools/start.js";
 import { overthinkInvestigate } from "./tools/investigate.js";
@@ -14,40 +17,67 @@ import { overthinkNextAction } from "./tools/next-action.js";
 import { overthinkCheckProgress } from "./tools/progress.js";
 import { overthinkVerify } from "./tools/verify.js";
 import { overthinkFinish } from "./tools/finish.js";
+import { overthinkGuard } from "./tools/guard.js";
+import { disciplineBanner } from "./core/action-guard.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function loadTextResource(...parts: string[]): string {
+  const candidates = [
+    join(__dirname, "..", ...parts),
+    join(__dirname, ...parts),
+    join(process.cwd(), ...parts),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return readFileSync(p, "utf-8");
+  }
+  return "";
+}
 
 const CORE_POLICY = `
-OVERTHINK CORE POLICY
+OVERTHINK CORE POLICY (STRICT)
 
-You are operating under the Overthink intelligence and execution discipline layer.
+You are under a hard discipline layer. Violating these wastes the user's time.
 
-Rules:
-1. Identify the actual objective before acting.
-2. Investigate with evidence. Prefer progressive, targeted search over broad repository scans.
-3. Use proportional reasoning (L0–L3). Do not over-plan simple tasks.
-4. Prefer minimal code changes. Avoid unrelated refactors and unnecessary abstractions.
-5. One primary useful action at a time.
-6. Never present a hypothesis as a confirmed root cause without direct evidence.
-7. Detect and avoid repeated unsuccessful actions.
-8. Verify before claiming completion. Only report tests as passed if they actually ran and succeeded.
-9. Communicate concisely. Report decisions, evidence, assumptions and conclusions — not long chain-of-thought narration.
-10. Stop when the root cause is confirmed, the fix is implemented and verified, or no new evidence is being produced.
+MUST:
+1. Call overthink_start before other work on a task.
+2. Call overthink_next_action and do ONLY that one action.
+3. Before shell commands that install packages, sleep, scrape, or scan the whole repo — call overthink_guard.
+4. After every action call overthink_check_progress. Obey force_stop / repeated / BLOCKED.
+5. Minimal change. Fix the symptom's cause, not the whole architecture.
+6. Short user replies: decisions + evidence only. No essay reasoning.
 
-Do not spend more effort thinking about a problem than the problem requires.
+MUST NOT:
+- sleep as debugging
+- pip/npm install as first response to UI/image bugs
+- BeautifulSoup/Selenium for "check if images load"
+- Repeat the same search/curl after it failed once
+- Create helper scripts unless the task requires a durable script
+- Claim success without overthink_verify with real executed checks
+
+Image / "not showing" bugs:
+→ Identify correct URL/port → find FAILED src → fix path. Stop.
+
+${disciplineBanner()}
 `.trim();
+
+const HEINRICH_RULES =
+  loadTextResource("src", "resources", "heinrich-rules.txt") ||
+  loadTextResource("resources", "heinrich-rules.txt") ||
+  CORE_POLICY;
 
 export function createServer() {
   const server = new McpServer({
     name: "overthink",
-    version: "0.1.2",
+    version: "0.2.0",
   });
 
-  // ---- Resources (URI templates / static) ----
   server.registerResource(
     "core-rules",
     "overthink://rules/core",
     {
       title: "Overthink Core Policy",
-      description: "Fundamental engineering discipline rules",
+      description: "Strict engineering discipline — read at task start",
       mimeType: "text/plain",
     },
     async () => ({
@@ -56,6 +86,25 @@ export function createServer() {
           uri: "overthink://rules/core",
           mimeType: "text/plain",
           text: CORE_POLICY,
+        },
+      ],
+    })
+  );
+
+  server.registerResource(
+    "heinrich-rules",
+    "overthink://rules/heinrich",
+    {
+      title: "Heinrich Mandatory Workflow",
+      description: "Forced tool order for Heinrich AI agent",
+      mimeType: "text/plain",
+    },
+    async () => ({
+      contents: [
+        {
+          uri: "overthink://rules/heinrich",
+          mimeType: "text/plain",
+          text: HEINRICH_RULES,
         },
       ],
     })
@@ -76,38 +125,30 @@ export function createServer() {
           mimeType: "text/plain",
           text: `
 DIAGNOSTIC METHOD
-1. Symptom identification — What exactly is failing?
-2. Failure localization — Which component or layer?
-3. Hypothesis generation — Most plausible explanations
-4. Hypothesis testing — Cheapest distinguishing test
-5. Root-cause confirmation — Direct evidence required
-6. Targeted correction — Fix only the confirmed issue
-7. Regression verification — Ensure nothing else broke
-
-Never present a hypothesis as a confirmed root cause.
+1. Symptom — what fails exactly?
+2. Localize — which file/URL/layer?
+3. One hypothesis
+4. Cheapest test
+5. Confirm with evidence
+6. Minimal fix
+7. Verify once
+Never present a guess as confirmed root cause.
 `.trim(),
         },
       ],
     })
   );
 
-  // ---- Tools (shape objects only — no z.object wrapper, no .default in shape) ----
   server.registerTool(
     "overthink_start",
     {
       title: "Start Task",
       description:
-        "Initialize a task, classify complexity, select reasoning level and budgets",
+        "REQUIRED first tool. Classifies task, sets strict budgets, returns discipline rules.",
       inputSchema: {
         task: z.string().describe("The engineering task or problem description"),
-        workspace: z
-          .string()
-          .optional()
-          .describe("Workspace / project root path"),
-        mode: z
-          .string()
-          .optional()
-          .describe("Mode: auto | coding | debugging | architecture"),
+        workspace: z.string().optional().describe("Workspace / project root path"),
+        mode: z.string().optional().describe("auto | coding | debugging | architecture"),
       },
     },
     async (args) => {
@@ -116,6 +157,40 @@ Never present a hypothesis as a confirmed root cause.
         workspace: args.workspace,
         mode: args.mode ?? "auto",
       });
+      const payload = {
+        ...result,
+        discipline: disciplineBanner(),
+        mandatory_next: "Call overthink_next_action with this task_id. Do nothing else first.",
+        hard_limits: {
+          max_actions: result.budget.max_actions,
+          max_retries: result.budget.max_retries,
+          no_sleep: true,
+          no_install_before_diagnose: true,
+          one_action_at_a_time: true,
+        },
+      };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+      };
+    }
+  );
+
+  server.registerTool(
+    "overthink_guard",
+    {
+      title: "Guard Action",
+      description:
+        "BLOCK wasteful actions (sleep, installs, scrapers, broad scans). Call before risky shell commands.",
+      inputSchema: {
+        proposed_action: z
+          .string()
+          .describe("The next command or step the agent wants to take"),
+        task_id: z.string().optional().describe("Task id if available"),
+        task_hint: z.string().optional().describe("Original user task if no task_id"),
+      },
+    },
+    async (args) => {
+      const result = overthinkGuard(args);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
@@ -126,23 +201,13 @@ Never present a hypothesis as a confirmed root cause.
     "overthink_investigate",
     {
       title: "Investigate",
-      description:
-        "Guide targeted evidence collection and progressive investigation",
+      description: "Targeted evidence collection only — progressive, not whole-repo",
       inputSchema: {
         task_id: z.string().describe("Task id from overthink_start"),
         error: z.string().optional().describe("Error message or symptom"),
-        scope: z
-          .array(z.string())
-          .optional()
-          .describe("Optional path scopes to limit search"),
-        observations: z
-          .array(z.string())
-          .optional()
-          .describe("New observations to record"),
-        relevant_files: z
-          .array(z.string())
-          .optional()
-          .describe("Files identified as relevant"),
+        scope: z.array(z.string()).optional().describe("Path scopes"),
+        observations: z.array(z.string()).optional().describe("New observations"),
+        relevant_files: z.array(z.string()).optional().describe("Relevant files"),
       },
     },
     async (args) => {
@@ -157,13 +222,10 @@ Never present a hypothesis as a confirmed root cause.
     "overthink_diagnose",
     {
       title: "Diagnose",
-      description:
-        "Identify likely root causes from observations; never treat untested hypotheses as facts",
+      description: "Rank hypotheses; never treat untested guesses as facts",
       inputSchema: {
-        task_id: z.string().describe("Task id"),
-        observations: z
-          .array(z.string())
-          .describe("Observations used for diagnosis"),
+        task_id: z.string(),
+        observations: z.array(z.string()),
       },
     },
     async (args) => {
@@ -178,10 +240,8 @@ Never present a hypothesis as a confirmed root cause.
     "overthink_plan",
     {
       title: "Plan",
-      description: "Generate a proportionate execution plan based on reasoning level",
-      inputSchema: {
-        task_id: z.string().describe("Task id"),
-      },
+      description: "Short plan only; simple tasks get almost no plan",
+      inputSchema: { task_id: z.string() },
     },
     async (args) => {
       const result = overthinkPlan(args);
@@ -196,10 +256,8 @@ Never present a hypothesis as a confirmed root cause.
     {
       title: "Next Action",
       description:
-        "Determine the single best next action, why it matters, and what to avoid",
-      inputSchema: {
-        task_id: z.string().describe("Task id"),
-      },
+        "Single best next action + hard avoid list. Call after start and after each progress check.",
+      inputSchema: { task_id: z.string() },
     },
     async (args) => {
       const result = overthinkNextAction(args);
@@ -214,11 +272,11 @@ Never present a hypothesis as a confirmed root cause.
     {
       title: "Check Progress",
       description:
-        "Detect repetition, stagnation and lack of progress after an action",
+        "Detect repetition/stagnation. force_stop=true means hard stop — no more exploration.",
       inputSchema: {
-        task_id: z.string().describe("Task id"),
-        action: z.string().describe("Action that was just performed"),
-        result: z.string().describe("Outcome / result of the action"),
+        task_id: z.string(),
+        action: z.string(),
+        result: z.string(),
       },
     },
     async (args) => {
@@ -233,20 +291,17 @@ Never present a hypothesis as a confirmed root cause.
     "overthink_verify",
     {
       title: "Verify",
-      description:
-        "Evaluate actual test/build results before allowing completion claims",
+      description: "Only pass checks that actually ran",
       inputSchema: {
-        task_id: z.string().describe("Task id"),
-        checks: z
-          .array(
-            z.object({
-              name: z.string(),
-              executed: z.boolean(),
-              passed: z.boolean(),
-              details: z.string().optional(),
-            })
-          )
-          .describe("List of verification checks with real outcomes"),
+        task_id: z.string(),
+        checks: z.array(
+          z.object({
+            name: z.string(),
+            executed: z.boolean(),
+            passed: z.boolean(),
+            details: z.string().optional(),
+          })
+        ),
       },
     },
     async (args) => {
@@ -261,13 +316,10 @@ Never present a hypothesis as a confirmed root cause.
     "overthink_finish",
     {
       title: "Finish",
-      description: "Produce a concise completion report with verification status",
+      description: "Short completion report",
       inputSchema: {
-        task_id: z.string().describe("Task id"),
-        summary: z
-          .string()
-          .optional()
-          .describe("Short human summary of what was done"),
+        task_id: z.string(),
+        summary: z.string().optional(),
       },
     },
     async (args) => {
@@ -278,15 +330,12 @@ Never present a hypothesis as a confirmed root cause.
     }
   );
 
-  // ---- Prompts ----
   server.registerPrompt(
     "solve_task",
     {
       title: "Solve Task",
-      description: "Solve an engineering task under Overthink discipline",
-      argsSchema: {
-        task: z.string().describe("The task to solve"),
-      },
+      description: "Strict Overthink workflow",
+      argsSchema: { task: z.string() },
     },
     async ({ task }) => ({
       messages: [
@@ -294,7 +343,7 @@ Never present a hypothesis as a confirmed root cause.
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `${CORE_POLICY}\n\nTask:\n${task}\n\nStart with overthink_start, then follow the recommended next_action.`,
+            text: `${CORE_POLICY}\n\nTask:\n${task}\n\nCall overthink_start now.`,
           },
         },
       ],
@@ -305,10 +354,8 @@ Never present a hypothesis as a confirmed root cause.
     "debug_issue",
     {
       title: "Debug Issue",
-      description: "Debug an issue with evidence-first diagnosis",
-      argsSchema: {
-        issue: z.string().describe("The issue to debug"),
-      },
+      description: "Evidence-first debug under strict budgets",
+      argsSchema: { issue: z.string() },
     },
     async ({ issue }) => ({
       messages: [
@@ -316,7 +363,7 @@ Never present a hypothesis as a confirmed root cause.
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `${CORE_POLICY}\n\nIssue to debug:\n${issue}\n\nUse overthink_start → overthink_investigate → overthink_diagnose. Confirm root cause before fixing.`,
+            text: `${CORE_POLICY}\n\nIssue:\n${issue}\n\nCall overthink_start now. No installs, no sleep.`,
           },
         },
       ],
@@ -326,7 +373,6 @@ Never present a hypothesis as a confirmed root cause.
   return server;
 }
 
-/** Local stdio mode (Cursor, Claude Code, etc.) */
 export async function startServer() {
   const server = createServer();
   const transport = new StdioServerTransport();
@@ -334,9 +380,6 @@ export async function startServer() {
   console.error("Overthink MCP server running on stdio");
 }
 
-/**
- * HTTP / Streamable HTTP mode for Heinrich and other remote MCP clients.
- */
 export async function startHttpServer(port = 3921) {
   const app = express();
   app.use(
@@ -353,7 +396,7 @@ export async function startHttpServer(port = 3921) {
   >();
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, name: "overthink", version: "0.1.2" });
+    res.json({ ok: true, name: "overthink", version: "0.2.0" });
   });
 
   app.all("/mcp", async (req, res) => {

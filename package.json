@@ -1,7 +1,7 @@
 {
   "name": "overthink",
-  "version": "0.1.1",
-  "description": "Overthink — An MCP Server for Intelligent AI Problem Solving. Intelligent problem-solving control layer that transforms AI coding agents into disciplined engineering problem solvers.",
+  "version": "0.2.0",
+  "description": "Overthink — Strict MCP discipline layer for AI coding agents. Blocks overthinking, wasteful commands, and unverified success claims.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -23,9 +23,8 @@
     "ai",
     "coding-agent",
     "problem-solving",
-    "engineering",
-    "debugging",
-    "reasoning"
+    "anti-overthinking",
+    "engineering"
   ],
   "author": "missarii",
   "license": "MIT",
