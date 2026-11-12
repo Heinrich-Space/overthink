@@ -1,16 +1,17 @@
-import { z } from "zod";
 import { taskManager } from "../core/task-manager.js";
-import { classifyComplexity, extractObjective, selectReasoningLevel } from "../core/task-classifier.js";
+import {
+  classifyComplexity,
+  extractObjective,
+  selectReasoningLevel,
+} from "../core/task-classifier.js";
 import { policyEngine } from "../core/policy-engine.js";
 import { reasoningEngine } from "../engines/reasoning.engine.js";
 
-export const startSchema = z.object({
-  task: z.string().describe("The engineering task or problem description"),
-  workspace: z.string().optional().describe("Workspace / project root path"),
-  mode: z.string().optional().default("auto").describe("Mode: auto | coding | debugging | architecture"),
-});
-
-export type StartInput = z.infer<typeof startSchema>;
+export interface StartInput {
+  task: string;
+  workspace?: string;
+  mode?: string;
+}
 
 export function overthinkStart(input: StartInput) {
   const policy = policyEngine.get();
@@ -24,7 +25,7 @@ export function overthinkStart(input: StartInput) {
 
   const state = taskManager.create(input.task, {
     workspace: input.workspace,
-    mode: input.mode,
+    mode: input.mode ?? "auto",
     complexity,
     reasoning_level,
     objective,

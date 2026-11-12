@@ -6,14 +6,14 @@ import express from "express";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
 
-import { overthinkStart, startSchema } from "./tools/start.js";
-import { overthinkInvestigate, investigateSchema } from "./tools/investigate.js";
-import { overthinkDiagnose, diagnoseSchema } from "./tools/diagnose.js";
-import { overthinkPlan, planSchema } from "./tools/plan.js";
-import { overthinkNextAction, nextActionSchema } from "./tools/next-action.js";
-import { overthinkCheckProgress, progressSchema } from "./tools/progress.js";
-import { overthinkVerify, verifySchema } from "./tools/verify.js";
-import { overthinkFinish, finishSchema } from "./tools/finish.js";
+import { overthinkStart } from "./tools/start.js";
+import { overthinkInvestigate } from "./tools/investigate.js";
+import { overthinkDiagnose } from "./tools/diagnose.js";
+import { overthinkPlan } from "./tools/plan.js";
+import { overthinkNextAction } from "./tools/next-action.js";
+import { overthinkCheckProgress } from "./tools/progress.js";
+import { overthinkVerify } from "./tools/verify.js";
+import { overthinkFinish } from "./tools/finish.js";
 
 const CORE_POLICY = `
 OVERTHINK CORE POLICY
@@ -38,12 +38,18 @@ Do not spend more effort thinking about a problem than the problem requires.
 export function createServer() {
   const server = new McpServer({
     name: "overthink",
-    version: "0.1.1",
+    version: "0.1.2",
   });
 
-  server.resource(
+  // ---- Resources (URI templates / static) ----
+  server.registerResource(
+    "core-rules",
     "overthink://rules/core",
-    "overthink://rules/core",
+    {
+      title: "Overthink Core Policy",
+      description: "Fundamental engineering discipline rules",
+      mimeType: "text/plain",
+    },
     async () => ({
       contents: [
         {
@@ -55,9 +61,14 @@ export function createServer() {
     })
   );
 
-  server.resource(
+  server.registerResource(
+    "debugging-rules",
     "overthink://rules/debugging",
-    "overthink://rules/debugging",
+    {
+      title: "Diagnostic Method",
+      description: "Root-cause diagnostic methodology",
+      mimeType: "text/plain",
+    },
     async () => ({
       contents: [
         {
@@ -80,112 +91,209 @@ Never present a hypothesis as a confirmed root cause.
     })
   );
 
-  server.tool(
+  // ---- Tools (shape objects only — no z.object wrapper, no .default in shape) ----
+  server.registerTool(
     "overthink_start",
-    "Initialize a task, classify complexity, select reasoning level and budgets",
-    startSchema.shape,
+    {
+      title: "Start Task",
+      description:
+        "Initialize a task, classify complexity, select reasoning level and budgets",
+      inputSchema: {
+        task: z.string().describe("The engineering task or problem description"),
+        workspace: z
+          .string()
+          .optional()
+          .describe("Workspace / project root path"),
+        mode: z
+          .string()
+          .optional()
+          .describe("Mode: auto | coding | debugging | architecture"),
+      },
+    },
     async (args) => {
-      const result = overthinkStart(startSchema.parse(args));
+      const result = overthinkStart({
+        task: args.task,
+        workspace: args.workspace,
+        mode: args.mode ?? "auto",
+      });
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "overthink_investigate",
-    "Guide targeted evidence collection and progressive investigation",
-    investigateSchema.shape,
+    {
+      title: "Investigate",
+      description:
+        "Guide targeted evidence collection and progressive investigation",
+      inputSchema: {
+        task_id: z.string().describe("Task id from overthink_start"),
+        error: z.string().optional().describe("Error message or symptom"),
+        scope: z
+          .array(z.string())
+          .optional()
+          .describe("Optional path scopes to limit search"),
+        observations: z
+          .array(z.string())
+          .optional()
+          .describe("New observations to record"),
+        relevant_files: z
+          .array(z.string())
+          .optional()
+          .describe("Files identified as relevant"),
+      },
+    },
     async (args) => {
-      const result = overthinkInvestigate(investigateSchema.parse(args));
+      const result = overthinkInvestigate(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "overthink_diagnose",
-    "Identify likely root causes from observations; never treat untested hypotheses as facts",
-    diagnoseSchema.shape,
+    {
+      title: "Diagnose",
+      description:
+        "Identify likely root causes from observations; never treat untested hypotheses as facts",
+      inputSchema: {
+        task_id: z.string().describe("Task id"),
+        observations: z
+          .array(z.string())
+          .describe("Observations used for diagnosis"),
+      },
+    },
     async (args) => {
-      const result = overthinkDiagnose(diagnoseSchema.parse(args));
+      const result = overthinkDiagnose(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "overthink_plan",
-    "Generate a proportionate execution plan based on reasoning level",
-    planSchema.shape,
+    {
+      title: "Plan",
+      description: "Generate a proportionate execution plan based on reasoning level",
+      inputSchema: {
+        task_id: z.string().describe("Task id"),
+      },
+    },
     async (args) => {
-      const result = overthinkPlan(planSchema.parse(args));
+      const result = overthinkPlan(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "overthink_next_action",
-    "Determine the single best next action, why it matters, and what to avoid",
-    nextActionSchema.shape,
+    {
+      title: "Next Action",
+      description:
+        "Determine the single best next action, why it matters, and what to avoid",
+      inputSchema: {
+        task_id: z.string().describe("Task id"),
+      },
+    },
     async (args) => {
-      const result = overthinkNextAction(nextActionSchema.parse(args));
+      const result = overthinkNextAction(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "overthink_check_progress",
-    "Detect repetition, stagnation and lack of progress after an action",
-    progressSchema.shape,
+    {
+      title: "Check Progress",
+      description:
+        "Detect repetition, stagnation and lack of progress after an action",
+      inputSchema: {
+        task_id: z.string().describe("Task id"),
+        action: z.string().describe("Action that was just performed"),
+        result: z.string().describe("Outcome / result of the action"),
+      },
+    },
     async (args) => {
-      const result = overthinkCheckProgress(progressSchema.parse(args));
+      const result = overthinkCheckProgress(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "overthink_verify",
-    "Evaluate actual test/build results before allowing completion claims",
-    verifySchema.shape,
+    {
+      title: "Verify",
+      description:
+        "Evaluate actual test/build results before allowing completion claims",
+      inputSchema: {
+        task_id: z.string().describe("Task id"),
+        checks: z
+          .array(
+            z.object({
+              name: z.string(),
+              executed: z.boolean(),
+              passed: z.boolean(),
+              details: z.string().optional(),
+            })
+          )
+          .describe("List of verification checks with real outcomes"),
+      },
+    },
     async (args) => {
-      const result = overthinkVerify(verifySchema.parse(args));
+      const result = overthinkVerify(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "overthink_finish",
-    "Produce a concise completion report with verification status",
-    finishSchema.shape,
+    {
+      title: "Finish",
+      description: "Produce a concise completion report with verification status",
+      inputSchema: {
+        task_id: z.string().describe("Task id"),
+        summary: z
+          .string()
+          .optional()
+          .describe("Short human summary of what was done"),
+      },
+    },
     async (args) => {
-      const result = overthinkFinish(finishSchema.parse(args));
+      const result = overthinkFinish(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
 
-  server.prompt(
+  // ---- Prompts ----
+  server.registerPrompt(
     "solve_task",
-    "Solve an engineering task under Overthink discipline",
-    { task: z.string() },
+    {
+      title: "Solve Task",
+      description: "Solve an engineering task under Overthink discipline",
+      argsSchema: {
+        task: z.string().describe("The task to solve"),
+      },
+    },
     async ({ task }) => ({
       messages: [
         {
-          role: "user",
+          role: "user" as const,
           content: {
-            type: "text",
+            type: "text" as const,
             text: `${CORE_POLICY}\n\nTask:\n${task}\n\nStart with overthink_start, then follow the recommended next_action.`,
           },
         },
@@ -193,16 +301,21 @@ Never present a hypothesis as a confirmed root cause.
     })
   );
 
-  server.prompt(
+  server.registerPrompt(
     "debug_issue",
-    "Debug an issue with evidence-first diagnosis",
-    { issue: z.string() },
+    {
+      title: "Debug Issue",
+      description: "Debug an issue with evidence-first diagnosis",
+      argsSchema: {
+        issue: z.string().describe("The issue to debug"),
+      },
+    },
     async ({ issue }) => ({
       messages: [
         {
-          role: "user",
+          role: "user" as const,
           content: {
-            type: "text",
+            type: "text" as const,
             text: `${CORE_POLICY}\n\nIssue to debug:\n${issue}\n\nUse overthink_start → overthink_investigate → overthink_diagnose. Confirm root cause before fixing.`,
           },
         },
@@ -223,24 +336,24 @@ export async function startServer() {
 
 /**
  * HTTP / Streamable HTTP mode for Heinrich and other remote MCP clients.
- * Listen only on localhost by default.
  */
 export async function startHttpServer(port = 3921) {
   const app = express();
-  app.use(cors({
-    origin: true,
-    exposedHeaders: ["Mcp-Session-Id"],
-  }));
+  app.use(
+    cors({
+      origin: true,
+      exposedHeaders: ["Mcp-Session-Id"],
+    })
+  );
   app.use(express.json({ limit: "4mb" }));
 
-  // One transport per session (stateful Streamable HTTP)
   const sessions = new Map<
     string,
     { server: McpServer; transport: StreamableHTTPServerTransport }
   >();
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, name: "overthink", version: "0.1.1" });
+    res.json({ ok: true, name: "overthink", version: "0.1.2" });
   });
 
   app.all("/mcp", async (req, res) => {
@@ -253,7 +366,6 @@ export async function startHttpServer(port = 3921) {
         return;
       }
 
-      // New session (initialize)
       if (req.method === "POST") {
         const server = createServer();
         const transport = new StreamableHTTPServerTransport({
@@ -292,7 +404,9 @@ export async function startHttpServer(port = 3921) {
 
   await new Promise<void>((resolve) => {
     app.listen(port, "127.0.0.1", () => {
-      console.error(`Overthink MCP HTTP server listening on http://127.0.0.1:${port}/mcp`);
+      console.error(
+        `Overthink MCP HTTP server listening on http://127.0.0.1:${port}/mcp`
+      );
       console.error(`Health check: http://127.0.0.1:${port}/health`);
       resolve();
     });
