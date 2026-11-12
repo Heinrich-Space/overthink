@@ -331,9 +331,10 @@ MIT © 2026 missarii
   <img src="heinrich-logo.png" alt="Heinrich AI" width="90" />
   <br/><br/>
   <strong>Overthink</strong> — Intelligent engineering discipline for AI coding agents<br/>
-  Built for <a href="https://marketplace.visualstudio.com/items?itemName=heinrich-ai.heinrich-ai">Heinrich AI</a><br/>
+  Built for <a href="https://marketplace.visualstudio.com/items?itemName=heinrich-ai.heinrich-ai">Heinrich AI</a>
+  <br/><br/><br/>
   <a href="https://www.linkedin.com/company/heinrich-ai">
-    <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" width="18" height="18" alt="LinkedIn" style="vertical-align: middle;" />
-    &nbsp;Follow Heinrich AI on LinkedIn
+    <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" width="32" height="32" alt="LinkedIn" style="vertical-align: middle;" />
+    &nbsp;&nbsp;Follow Heinrich AI on LinkedIn
   </a>
 </p>
