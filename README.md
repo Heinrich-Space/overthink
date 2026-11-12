@@ -161,7 +161,6 @@ AI Coding Agent (Heinrich AI / Cursor / Claude Code / …)
 │  • Planning Engine      • Diagnosis Engine              │
 │  • Execution Engine     • Verification Engine           │
 │  • Progress Tracker     • Budget Controller             │
-│  • Policy Engine (YAML)                                 │
 └─────────────────────────────────────────────────────────┘
         ↓
 Evidence-backed result · Minimal changes · Short report
@@ -333,8 +332,8 @@ MIT © 2026 missarii
   <strong>Overthink</strong> — Intelligent engineering discipline for AI coding agents<br/>
   Built for <a href="https://marketplace.visualstudio.com/items?itemName=heinrich-ai.heinrich-ai">Heinrich AI</a>
   <br/><br/><br/>
-  <a href="https://www.linkedin.com/company/heinrich-ai">
-    <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" width="32" height="32" alt="LinkedIn" style="vertical-align: middle;" />
-    &nbsp;&nbsp;Follow Heinrich AI on LinkedIn
+  <a href="https://www.linkedin.com/company/heinrich-ai" style="display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: inherit;">
+    <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" width="32" height="32" alt="LinkedIn" />
+    <span>Follow Heinrich AI on LinkedIn</span>
   </a>
 </p>
