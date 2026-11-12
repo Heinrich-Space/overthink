@@ -21,6 +21,7 @@ import { overthinkGuard } from "./tools/guard.js";
 import { disciplineBanner } from "./core/action-guard.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const VERSION = "0.3.0";
 
 function loadTextResource(...parts: string[]): string {
   const candidates = [
@@ -35,28 +36,25 @@ function loadTextResource(...parts: string[]): string {
 }
 
 const CORE_POLICY = `
-OVERTHINK CORE POLICY (STRICT)
+OVERTHINK CORE POLICY v0.3 (STRICT + TIME)
 
-You are under a hard discipline layer. Violating these wastes the user's time.
+Finish on time. No loops. No side-paths.
 
 MUST:
-1. Call overthink_start before other work on a task.
-2. Call overthink_next_action and do ONLY that one action.
-3. Before shell commands that install packages, sleep, scrape, or scan the whole repo — call overthink_guard.
-4. After every action call overthink_check_progress. Obey force_stop / repeated / BLOCKED.
-5. Minimal change. Fix the symptom's cause, not the whole architecture.
-6. Short user replies: decisions + evidence only. No essay reasoning.
+1. overthink_start before other work.
+2. overthink_next_action → do ONLY that action.
+3. overthink_guard before sleep/install/scrape/whole-repo find/full suite.
+4. overthink_check_progress after every action. Obey force_stop / similar / fail_loop.
+5. Use triage failure_class and time_box from start.
+6. Minimal fix. Short user replies (≤6 lines).
 
 MUST NOT:
-- sleep as debugging
-- pip/npm install as first response to UI/image bugs
-- BeautifulSoup/Selenium for "check if images load"
-- Repeat the same search/curl after it failed once
-- Create helper scripts unless the task requires a durable script
-- Claim success without overthink_verify with real executed checks
+- Repeat the same command family after it failed
+- Sleep, drive-by installs, scrapers for simple UI checks
+- Refactor/redesign/migrate unless the user asked
+- Explore when urgency is high/critical — fix or report
 
-Image / "not showing" bugs:
-→ Identify correct URL/port → find FAILED src → fix path. Stop.
+Image/UI bugs: failing src/CSS only. Stop.
 
 ${disciplineBanner()}
 `.trim();
@@ -69,7 +67,7 @@ const HEINRICH_RULES =
 export function createServer() {
   const server = new McpServer({
     name: "overthink",
-    version: "0.2.0",
+    version: VERSION,
   });
 
   server.registerResource(
@@ -77,7 +75,7 @@ export function createServer() {
     "overthink://rules/core",
     {
       title: "Overthink Core Policy",
-      description: "Strict engineering discipline — read at task start",
+      description: "Strict time + loop discipline",
       mimeType: "text/plain",
     },
     async () => ({
@@ -96,7 +94,7 @@ export function createServer() {
     "overthink://rules/heinrich",
     {
       title: "Heinrich Mandatory Workflow",
-      description: "Forced tool order for Heinrich AI agent",
+      description: "Forced tool order + finish bias",
       mimeType: "text/plain",
     },
     async () => ({
@@ -115,7 +113,7 @@ export function createServer() {
     "overthink://rules/debugging",
     {
       title: "Diagnostic Method",
-      description: "Root-cause diagnostic methodology",
+      description: "Root-cause method",
       mimeType: "text/plain",
     },
     async () => ({
@@ -123,17 +121,7 @@ export function createServer() {
         {
           uri: "overthink://rules/debugging",
           mimeType: "text/plain",
-          text: `
-DIAGNOSTIC METHOD
-1. Symptom — what fails exactly?
-2. Localize — which file/URL/layer?
-3. One hypothesis
-4. Cheapest test
-5. Confirm with evidence
-6. Minimal fix
-7. Verify once
-Never present a guess as confirmed root cause.
-`.trim(),
+          text: `DIAGNOSTIC\n1 Symptom 2 Localize 3 One hypothesis 4 Cheapest test 5 Confirm 6 Minimal fix 7 Verify once`,
         },
       ],
     })
@@ -144,11 +132,11 @@ Never present a guess as confirmed root cause.
     {
       title: "Start Task",
       description:
-        "REQUIRED first tool. Classifies task, sets strict budgets, returns discipline rules.",
+        "REQUIRED first. Fast triage, time box, strict budgets, failure class.",
       inputSchema: {
-        task: z.string().describe("The engineering task or problem description"),
-        workspace: z.string().optional().describe("Workspace / project root path"),
-        mode: z.string().optional().describe("auto | coding | debugging | architecture"),
+        task: z.string().describe("User task"),
+        workspace: z.string().optional(),
+        mode: z.string().optional(),
       },
     },
     async (args) => {
@@ -157,20 +145,8 @@ Never present a guess as confirmed root cause.
         workspace: args.workspace,
         mode: args.mode ?? "auto",
       });
-      const payload = {
-        ...result,
-        discipline: disciplineBanner(),
-        mandatory_next: "Call overthink_next_action with this task_id. Do nothing else first.",
-        hard_limits: {
-          max_actions: result.budget.max_actions,
-          max_retries: result.budget.max_retries,
-          no_sleep: true,
-          no_install_before_diagnose: true,
-          one_action_at_a_time: true,
-        },
-      };
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
     }
   );
@@ -180,13 +156,11 @@ Never present a guess as confirmed root cause.
     {
       title: "Guard Action",
       description:
-        "BLOCK wasteful actions (sleep, installs, scrapers, broad scans). Call before risky shell commands.",
+        "Blocks loops, waste, side-paths. Call before risky shell commands.",
       inputSchema: {
-        proposed_action: z
-          .string()
-          .describe("The next command or step the agent wants to take"),
-        task_id: z.string().optional().describe("Task id if available"),
-        task_hint: z.string().optional().describe("Original user task if no task_id"),
+        proposed_action: z.string(),
+        task_id: z.string().optional(),
+        task_hint: z.string().optional(),
       },
     },
     async (args) => {
@@ -201,13 +175,13 @@ Never present a guess as confirmed root cause.
     "overthink_investigate",
     {
       title: "Investigate",
-      description: "Targeted evidence collection only — progressive, not whole-repo",
+      description: "Targeted evidence only",
       inputSchema: {
-        task_id: z.string().describe("Task id from overthink_start"),
-        error: z.string().optional().describe("Error message or symptom"),
-        scope: z.array(z.string()).optional().describe("Path scopes"),
-        observations: z.array(z.string()).optional().describe("New observations"),
-        relevant_files: z.array(z.string()).optional().describe("Relevant files"),
+        task_id: z.string(),
+        error: z.string().optional(),
+        scope: z.array(z.string()).optional(),
+        observations: z.array(z.string()).optional(),
+        relevant_files: z.array(z.string()).optional(),
       },
     },
     async (args) => {
@@ -222,7 +196,7 @@ Never present a guess as confirmed root cause.
     "overthink_diagnose",
     {
       title: "Diagnose",
-      description: "Rank hypotheses; never treat untested guesses as facts",
+      description: "Rank hypotheses; guesses are not facts",
       inputSchema: {
         task_id: z.string(),
         observations: z.array(z.string()),
@@ -240,7 +214,7 @@ Never present a guess as confirmed root cause.
     "overthink_plan",
     {
       title: "Plan",
-      description: "Short plan only; simple tasks get almost no plan",
+      description: "Short plan only",
       inputSchema: { task_id: z.string() },
     },
     async (args) => {
@@ -256,7 +230,7 @@ Never present a guess as confirmed root cause.
     {
       title: "Next Action",
       description:
-        "Single best next action + hard avoid list. Call after start and after each progress check.",
+        "Single best action under triage + time pressure. Prefer finish when urgency high.",
       inputSchema: { task_id: z.string() },
     },
     async (args) => {
@@ -272,7 +246,7 @@ Never present a guess as confirmed root cause.
     {
       title: "Check Progress",
       description:
-        "Detect repetition/stagnation. force_stop=true means hard stop — no more exploration.",
+        "Detect similar actions, fail-loops, stagnation. force_stop = hard stop.",
       inputSchema: {
         task_id: z.string(),
         action: z.string(),
@@ -291,7 +265,7 @@ Never present a guess as confirmed root cause.
     "overthink_verify",
     {
       title: "Verify",
-      description: "Only pass checks that actually ran",
+      description: "Only real executed checks",
       inputSchema: {
         task_id: z.string(),
         checks: z.array(
@@ -354,7 +328,7 @@ Never present a guess as confirmed root cause.
     "debug_issue",
     {
       title: "Debug Issue",
-      description: "Evidence-first debug under strict budgets",
+      description: "Fast triage debug",
       argsSchema: { issue: z.string() },
     },
     async ({ issue }) => ({
@@ -363,7 +337,7 @@ Never present a guess as confirmed root cause.
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `${CORE_POLICY}\n\nIssue:\n${issue}\n\nCall overthink_start now. No installs, no sleep.`,
+            text: `${CORE_POLICY}\n\nIssue:\n${issue}\n\nCall overthink_start now.`,
           },
         },
       ],
@@ -396,7 +370,7 @@ export async function startHttpServer(port = 3921) {
   >();
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, name: "overthink", version: "0.2.0" });
+    res.json({ ok: true, name: "overthink", version: VERSION });
   });
 
   app.all("/mcp", async (req, res) => {
